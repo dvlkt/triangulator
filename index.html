@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Minecraft Image Triangulator</title>
+        <link rel="icon" href="favicon.png" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            * {
+                margin: 0;
+                box-sizing: border-box;
+                font-family: "JetBrains Mono", monospace;
+            }
+            main {
+                width: 60%;
+                margin: 0 auto;
+            }
+            @media only screen and (max-width: 600px) {
+                main {
+                    width: 95%;
+                }
+            }
+            ::selection {
+                background: #ccc;
+                color: #000;
+            }
+
+            h1 {
+                text-align: center;
+                margin-top: 15px;
+            }
+            h3 {
+                font-size: 17px;
+                font-weight: bold;
+                margin-top: 15px;
+            }
+            p {
+                margin-top: 5px;
+            }
+
+            .img-wrapper {
+                display: inline-block;
+                position: relative;
+                max-width: 100%;
+                margin-bottom: 10px;
+            }
+            .img-wrapper img {
+                width: 100%;
+                height: auto;
+                border: solid 4px #000;
+            }
+            .tracker {
+                position: absolute;
+                display: block;
+                width: 15px;
+                height: 15px;
+                clip-path: polygon(
+                    0% 0%,
+                    0% 100%,
+                    25% 100%,
+                    25% 25%,
+                    75% 25%,
+                    75% 75%,
+                    25% 75%,
+                    25% 100%,
+                    100% 100%,
+                    100% 0%
+                );
+                transform: translate(-7.5px, -7.5px);
+                backdrop-filter: invert() brightness(0.5);
+            }
+
+            input[type="number"] {
+                border: solid 2px #000;
+                margin-top: 5px;
+                margin-right: 5px;
+            }
+            input[type="number"]::placeholder {
+                color: #808080;
+            }
+
+            button {
+                border: solid 2px #000;
+                font-weight: bold;
+                padding: 5px 10px;
+                background: #fff;
+                cursor: pointer;
+            }
+
+            #results {
+                font-size: 15px;
+                font-weight: bold;
+                margin-bottom: 0;
+            }
+            #error {
+                font-size: 14px;
+                font-weight: bold;
+            }
+
+            .footer {
+                color: #808080;
+                font-size: 13px;
+                text-align: center;
+                margin-bottom: 15px;
+            }
+            .footer a {
+                color: #808080;
+                text-decoration: underline;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1>Minecraft Image Triangulator</h1>
+            <h3>1. Upload two screenshots:</h3>
+            <input
+                type="file"
+                id="file-upload"
+                accept=".png,.jpg,.jpeg"
+                multiple
+            />
+
+            <h3>2. Pick the position of the object in the two images:</h3>
+            <div id="img1" class="img-wrapper">
+                <img accesskey="" />
+                <div class="tracker"></div>
+            </div>
+            <div id="img2" class="img-wrapper">
+                <img />
+                <div class="tracker"></div>
+            </div>
+
+            <h3>3. Enter your position, rotation, and FOV:</h3>
+            <p>First picture:</p>
+            <input type="number" placeholder="X position" id="xpos1" />
+            <input type="number" placeholder="Y position" id="ypos1" />
+            <input type="number" placeholder="Z position" id="zpos1" />
+            <input type="number" placeholder="Yaw" id="yaw1" />
+            <input type="number" placeholder="Pitch" id="pitch1" />
+            <input type="number" placeholder="FOV" id="fov1" />
+
+            <p>Second picture:</p>
+            <input type="number" placeholder="X position" id="xpos2" />
+            <input type="number" placeholder="Y position" id="ypos2" />
+            <input type="number" placeholder="Z position" id="zpos2" />
+            <input type="number" placeholder="Yaw" id="yaw2" />
+            <input type="number" placeholder="Pitch" id="pitch2" />
+            <input type="number" placeholder="FOV" id="fov2" />
+
+            <h3>The results</h3>
+            <button onclick="calculate()">Calculate!</button>
+            <p id="result"></p>
+            <p id="error"></p>
+
+            <p class="footer">
+                &copy; Dāvis Lektauers, 2025 &bullet;
+                <a href="https://dvlkt.net">dvlkt.net</a>
+            </p>
+        </main>
+    </body>
+
+    <script type="text/javascript">
+        let fileUploadEl = document.querySelector("#file-upload");
+        let img1El = document.querySelector("#img1");
+        let img2El = document.querySelector("#img2");
+        let tracker1El = document.querySelector("#img1 .tracker");
+        let tracker2El = document.querySelector("#img2 .tracker");
+
+        let img1Width = 0;
+        let img1Height = 0;
+        let img2Width = 0;
+        let img2Height = 0;
+
+        fileUploadEl.onchange = (e) => {
+            let files = e.target.files;
+            if (files.length !== 2) {
+                alert("Please upload two images!");
+                return;
+            }
+
+            img1El.querySelector("img").src = URL.createObjectURL(files[0]);
+            img2El.querySelector("img").src = URL.createObjectURL(files[1]);
+        };
+
+        let tracker1Pos = [0, 0];
+        let tracker2Pos = [0, 0];
+
+        const onImgClick = (e, img) => {
+            if (img === 1) {
+                tracker1Pos = [
+                    (e.clientX - img1El.getBoundingClientRect().left) /
+                        img1El.getBoundingClientRect().width,
+                    (e.clientY - img1El.getBoundingClientRect().top) /
+                        img1El.getBoundingClientRect().height,
+                ];
+                tracker1El.style.left = `${tracker1Pos[0] * img1El.getBoundingClientRect().width}px`;
+                tracker1El.style.top = `${tracker1Pos[1] * img1El.getBoundingClientRect().height}px`;
+            } else {
+                tracker2Pos = [
+                    (e.clientX - img2El.getBoundingClientRect().left) /
+                        img2El.getBoundingClientRect().width,
+                    (e.clientY - img2El.getBoundingClientRect().top) /
+                        img2El.getBoundingClientRect().height,
+                ];
+                tracker2El.style.left = `${tracker2Pos[0] * img2El.getBoundingClientRect().width}px`;
+                tracker2El.style.top = `${tracker2Pos[1] * img2El.getBoundingClientRect().height}px`;
+            }
+        };
+        img1El.onmousedown = (e) => onImgClick(e, 1);
+        img2El.onmousedown = (e) => onImgClick(e, 2);
+
+        let resultEl = document.querySelector("#result");
+        let errorEl = document.querySelector("#error");
+        const calculate = () => {
+            img1Width = img1El.getBoundingClientRect().width;
+            img1Height = img1El.getBoundingClientRect().height;
+            img2Width = img2El.getBoundingClientRect().width;
+            img2Height = img2El.getBoundingClientRect().height;
+
+            let x1 = parseFloat(document.querySelector("#xpos1").value);
+            let y1 = parseFloat(document.querySelector("#ypos1").value);
+            let z1 = parseFloat(document.querySelector("#zpos1").value);
+            let x2 = parseFloat(document.querySelector("#xpos2").value);
+            let y2 = parseFloat(document.querySelector("#ypos2").value);
+            let z2 = parseFloat(document.querySelector("#zpos2").value);
+
+            // Player's eyes are 1.62 blocks from the ground
+            y1 += 1.62;
+            y2 += 1.62;
+
+            let yaw1 =
+                parseFloat(document.querySelector("#yaw1").value) *
+                (Math.PI / 180);
+            let pitch1 =
+                parseFloat(document.querySelector("#pitch1").value) *
+                (Math.PI / 180);
+            let yaw2 =
+                parseFloat(document.querySelector("#yaw2").value) *
+                (Math.PI / 180);
+            let pitch2 =
+                parseFloat(document.querySelector("#pitch2").value) *
+                (Math.PI / 180);
+
+            let vFov1 =
+                parseFloat(document.querySelector("#fov1").value) *
+                (Math.PI / 180);
+            let vFov2 =
+                parseFloat(document.querySelector("#fov2").value) *
+                (Math.PI / 180);
+
+            // Thank you ChatGPT for this formula
+            let hFov1 =
+                2 * Math.atan((Math.tan(vFov1 / 2) * img1Width) / img1Height);
+            let hFov2 =
+                2 * Math.atan((Math.tan(vFov2 / 2) * img2Width) / img2Height);
+
+            // Calculate the angles from both images to target
+            let screenPos1 = [tracker1Pos[0] - 0.5, tracker1Pos[1] - 0.5];
+            let tYaw1 = yaw1 + screenPos1[0] * hFov1;
+            let tPitch1 = pitch1 + screenPos1[1] * vFov1;
+
+            let screenPos2 = [tracker2Pos[0] - 0.5, tracker2Pos[1] - 0.5];
+            let tYaw2 = yaw2 + screenPos2[0] * hFov2;
+            let tPitch2 = pitch2 + screenPos2[1] * vFov2;
+
+            // Calculate the direction vectors
+            let dirX1 = -Math.sin(tYaw1) * Math.cos(tPitch1);
+            let dirY1 = -Math.sin(tPitch1);
+            let dirZ1 = Math.cos(tYaw1) * Math.cos(tPitch1);
+
+            let dirX2 = -Math.sin(tYaw2) * Math.cos(tPitch2);
+            let dirY2 = -Math.sin(tPitch2);
+            let dirZ2 = Math.cos(tYaw2) * Math.cos(tPitch2);
+
+            // Shoot out the direction vectors like rays and see where they get the closest
+            // Yep, I just brute force this since it doesn't matter that much anyways
+            let minDist = null;
+            let minA = null;
+            let minB = null;
+            for (let a = 0; a < 1000; a += 0.1) {
+                for (let b = 0; b < 1000; b += 0.1) {
+                    let xDist = x1 + a * dirX1 - (x2 + b * dirX2);
+                    let yDist = y1 + a * dirY1 - (y2 + b * dirY2);
+                    let zDist = z1 + a * dirZ1 - (z2 + b * dirZ2);
+                    let dist = Math.sqrt(xDist ** 2 + yDist ** 2 + zDist ** 2);
+
+                    if (minDist === null || dist < minDist) {
+                        minDist = dist;
+                        minA = a;
+                        minB = b;
+                    }
+                }
+            }
+
+            // The answer is the average of the two closest points
+            let x = (x1 + minA * dirX1 + x2 + minB * dirX2) / 2;
+            let y = (y1 + minA * dirY1 + y2 + minB * dirY2) / 2;
+            let z = (z1 + minA * dirZ1 + z2 + minB * dirZ2) / 2;
+
+            resultEl.innerText = `X: ${Math.round(x * 1000) / 1000}, Y: ${Math.round(y * 1000) / 1000}, Z: ${Math.round(z * 1000) / 1000}`;
+            errorEl.innerText = `Error: ${Math.round(minDist * 1000) / 1000}`;
+        };
+    </script>
+</html>
